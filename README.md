@@ -95,3 +95,13 @@ SD IDB 二进制位于 `board/king3288-blobs/king3288-idb-miniloader.bin`，仅 
 ## 许可
 
 原始 iStoreOS/OpenWrt、内核、OpenClash、Mihomo、Docker 等组件遵守各自的原始许可证。此仓库的脚本不能重新许可第三方二进制；详见 [NOTICE.md](NOTICE.md)。
+
+## 独立构建验证结果（2026-10-16）
+
+在 Ubuntu 24.04 x86_64 的新仓库目录解压上述已发行的 Standalone ImageBuilder，执行本仓库的 `./build.sh`（无源码内核编译），从 296 包重建 rootfs，再封装完整 SD v3，全部成功，返回码 0。完整镜像离线校验标志：`M8_V3_FULL_DISK_OFFLINE_VALIDATION_OK`。
+
+这次独立运行生成的 SD 镜像 SHA256：
+
+`eb0576eaa4cb45f797090509711d221555a1107d2931db55e1479bfb4388b8f3`
+
+这是 ImageBuilder 离线打包产物；与第一次本机直接编译 SD v3 的压缩包 SHA256 不同，但两者均使用已验证板级启动布局。新卡实机冷启动仍未验收。
