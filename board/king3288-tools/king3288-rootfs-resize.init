@@ -1,0 +1,8 @@
+#!/bin/sh /etc/rc.common
+# One-shot stage after p2 partition resize; only enabled by --apply.
+START=98
+STOP=10
+boot() {
+    [ -r /etc/king3288-rootfs-expand.pending ] || return 0
+    /usr/sbin/king3288-expand-rootfs --finish >>/tmp/king3288-expand-rootfs.log 2>&1
+}

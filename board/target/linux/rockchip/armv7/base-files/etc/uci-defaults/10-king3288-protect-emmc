@@ -1,0 +1,14 @@
+#!/bin/sh
+# KING3288: prevent iStoreOS port_mount from auto-mounting production eMMC.
+# Runs via S10boot after 09_istoreos creates /etc/config/fstab, before
+# S11blockmount. Match UUID, never depend on mmcblk0/mmcblk1 numbering.
+# New SD images only: one-shot uci-defaults, never rewrite user config later.
+
+[ -f /etc/config/fstab ] || exit 1
+
+uci -q set fstab.emmc_protect='mount' || exit 1
+uci -q set fstab.emmc_protect.uuid='3d6b8cf4-922e-473b-bab1-bbdf3d8ad659' || exit 1
+uci -q set fstab.emmc_protect.enabled='0' || exit 1
+uci -q commit fstab || exit 1
+
+exit 0

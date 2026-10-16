@@ -1,0 +1,12 @@
+# binaries live in GitHub Releases, never commit giant generated files
+*.tar.zst
+*.tar.gz
+*.img
+*.img.gz
+*.img.xz
+*.ipk
+*.log
+/output/
+/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64/
+/.cache/
+.DS_Store
