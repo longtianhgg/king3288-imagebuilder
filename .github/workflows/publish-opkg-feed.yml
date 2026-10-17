@@ -1,0 +1,138 @@
+name: Publish KING3288 OPKG package feed
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: king3288-opkg-feed
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install archive tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zstd jq python3
+      - name: Resolve verified ImageBuilder release
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset=istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst
+          source_tag="$(gh api 'repos/longtianhgg/king3288-imagebuilder/releases?per_page=60' |
+            jq -r --arg a "$asset" '[.[] | select(.draft == false and .prerelease == false) |
+              select(any(.assets[]?; .name == $a))][0].tag_name // empty')"
+          test -n "$source_tag"
+          printf 'source_tag=%s\n' "$source_tag" >> "$GITHUB_OUTPUT"
+          gh release download "$source_tag" --pattern "$asset" --pattern SHA256SUMS --dir . --clobber
+          grep -F "  $asset" SHA256SUMS | sha256sum -c -
+          tar --use-compress-program=zstd -xf "$asset"
+          echo "Verified ImageBuilder source: $source_tag"
+      - name: Prepare safe feed, index and signature
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          ib="$PWD/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64"
+          test -x "$ib/staging_dir/host/bin/usign"
+          test -x "$ib/staging_dir/host/bin/mkhash"
+          test -f "$ib/scripts/ipkg-make-index.sh"
+          mkdir -p feed
+          export IB="$ib"
+          python3 - <<'PY'
+          import os, pathlib, re, shutil
+          src = pathlib.Path(os.environ['IB']) / 'packages'
+          dst = pathlib.Path('feed')
+          names = set()
+          n = 0
+          for package in sorted(src.glob('*.ipk')):
+              # Do not offer libc or kernel as online updates to a running system.
+              if package.name.startswith(('kernel_', 'libc_')):
+                  continue
+              safe = re.sub(r'[^A-Za-z0-9._-]', '-', package.name)
+              if safe in names:
+                  raise SystemExit(f'Asset name collision: {safe}')
+              names.add(safe)
+              shutil.copyfile(package, dst / safe)
+              n += 1
+          if n < 100:
+              raise SystemExit(f'Unexpectedly small IPK set: {n}')
+          print(f'Prepared {n} IPKs')
+          PY
+          (
+            cd feed
+            MKHASH="$ib/staging_dir/host/bin/mkhash" bash "$ib/scripts/ipkg-make-index.sh" . > Packages
+            gzip -n -9 -c Packages > Packages.gz
+            # A new private signing key lives only on the disposable Actions runner.
+            # The public key is published for opt-in installation on KING3288.
+            "$ib/staging_dir/host/bin/usign" -G -s "$RUNNER_TEMP/opkg-feed.key" -p feed.pub -c 'KING3288 OPKG feed (one-time release key)'
+            "$ib/staging_dir/host/bin/usign" -S -m Packages -s "$RUNNER_TEMP/opkg-feed.key" -x Packages.sig
+            "$ib/staging_dir/host/bin/usign" -V -m Packages -p feed.pub -x Packages.sig
+            gzip -dc Packages.gz | cmp - Packages
+          )
+          python3 - <<'PY'
+          import pathlib, hashlib
+          root = pathlib.Path('feed')
+          index = root.joinpath('Packages').read_text()
+          actual = sorted(root.glob('*.ipk'))
+          indexed = set()
+          for stanza in index.strip().split('\n\n'):
+              m = dict(line.split(': ', 1) for line in stanza.splitlines() if ': ' in line)
+              if 'Filename' not in m:
+                  raise SystemExit(f'Missing Filename in stanza: {stanza[:80]}')
+              name = m['Filename']
+              if name in indexed:
+                  raise SystemExit(f'Duplicate index entry: {name}')
+              indexed.add(name)
+              file = root / name
+              if not file.is_file():
+                  raise SystemExit(f'Missing indexed package: {name}')
+              if hashlib.sha256(file.read_bytes()).hexdigest() != m['SHA256sum']:
+                  raise SystemExit(f'Wrong SHA256 in index: {name}')
+              if int(m['Size']) != file.stat().st_size:
+                  raise SystemExit(f'Wrong Size in index: {name}')
+              if m['Architecture'] not in ('arm_cortex-a15_neon-vfpv4', 'all', 'noarch'):
+                  raise SystemExit(f'Wrong architecture: {name}')
+          if indexed != set(p.name for p in actual):
+              raise SystemExit('Index and published package files differ')
+          print(f'INDEX_VERIFIED: {len(indexed)} complete IPKs')
+          PY
+          (cd feed && sha256sum -- *.ipk Packages Packages.gz Packages.sig feed.pub > SHA256SUMS)
+          echo "count=$(find feed -maxdepth 1 -name '*.ipk' | wc -l)" >> "$GITHUB_OUTPUT"
+      - name: Publish immutable Release feed (draft until verified)
+        shell: bash
+        env:
+          BUILDER_TAG: ${{ steps.source.outputs.source_tag }}
+          PACKAGE_COUNT: ${{ steps.package.outputs.count }}
+        run: |
+          set -euo pipefail
+          tag="opkg-$BUILDER_TAG"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$tag" --draft --latest=false --target "$GITHUB_SHA" \
+            --title "KING3288 OPKG feed ($BUILDER_TAG, $PACKAGE_COUNT IPKs)" \
+            --notes "Version-pinned KING3288 native iStoreOS 24.10.8 / ARMv7 feed generated from verified ImageBuilder $BUILDER_TAG. Kernel: Linux 6.6.144; only use kmods on exactly matching kernel ABI. This feed excludes kernel and libc packages. Feed URL: https://github.com/longtianhgg/king3288-imagebuilder/releases/download/$tag . Install feed.pub as an explicitly trusted OPKG public key before adding the feed. Private signing key is deliberately discarded after publication. Do not use opkg upgrade to replace base system packages. Do not write eMMC."
+          gh release upload "$tag" feed/*.ipk feed/Packages feed/Packages.gz feed/Packages.sig feed/feed.pub feed/SHA256SUMS
+          expected=$((PACKAGE_COUNT + 5))
+          actual="$(gh release view "$tag" --json assets --jq '.assets | length')"
+          if [[ "$actual" -ne "$expected" ]]; then
+            echo "Release asset count: expected $expected, got $actual" >&2
+            exit 1
+          fi
+          # Ensure GitHub did not silently rename a package asset.
+          gh release view "$tag" --json assets --jq '.assets[].name' | LC_ALL=C sort > release-assets.txt
+          find feed -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort > expected-assets.txt
+          diff -u expected-assets.txt release-assets.txt
+          gh release edit "$tag" --draft=false
+          echo "Published https://github.com/longtianhgg/king3288-imagebuilder/releases/tag/$tag"
