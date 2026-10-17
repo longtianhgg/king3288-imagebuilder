@@ -29,7 +29,7 @@ mkdir -p "$HERE/output"
 # #name disables that package. Reject incompatible package selections.
 sed -e 's/^[[:space:]]*//' -e '/^$/d' "$HERE/packages.conf" > "$HERE/output/all-package-lines.txt"
 grep -v '^#' "$HERE/output/all-package-lines.txt" | awk '{print $1}' | LC_ALL=C sort -u > "$HERE/output/selected.txt"
-grep '^#' "$HERE/output/all-package-lines.txt" | sed 's/^#[[:space:]]*//' | awk '/^[a-zA-Z0-9]/{print $1}' | LC_ALL=C sort -u > "$HERE/output/disabled.txt"
+grep -E '^#[a-z0-9][a-z0-9_.+-]*([[:space:]]|$)' "$HERE/output/all-package-lines.txt" | sed 's/^#//' | awk '{print $1}' | LC_ALL=C sort -u > "$HERE/output/disabled.txt" || :
 if [[ "$WITH_DOCKER" == false ]]; then
   for p in docker dockerd containerd docker-compose luci-app-dockerman luci-lib-docker luci-i18n-dockerman-zh-cn; do
     echo "$p" >> "$HERE/output/disabled.txt"
