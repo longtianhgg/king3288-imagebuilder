@@ -1,0 +1,73 @@
+name: Build customizable KING3288 SD firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      rootfs_gib:
+        description: "SD ext4 root partition size (GiB, 1-6)"
+        type: choice
+        required: true
+        default: '2'
+        options: ['1', '2', '3', '4', '5', '6']
+      docker:
+        description: "Include Docker, containerd, Compose and Dockerman"
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: king3288-imagebuilder-firmware
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ROOTFS_GIB: ${{ inputs.rootfs_gib }}
+      WITH_DOCKER: ${{ inputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends make zstd fakeroot fdisk dosfstools mtools e2fsprogs pigz device-tree-compiler jq
+          df -h /
+          bash -n build.sh
+          bash -n board/king3288-tools/build-king3288-sd-image-txpbl1-v3.sh
+          bash -n board/king3288-tools/validate-king3288-sd-image-txpbl1-v3.sh
+      - name: Download latest released standalone ImageBuilder
+        id: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSET=istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst
+          # Custom firmware releases do NOT become ImageBuilder upstream by accident.
+          tag="$(gh api 'repos/longtianhgg/king3288-imagebuilder/releases?per_page=40' |
+            jq -r --arg a "$ASSET" '[.[] | select(.draft == false and .prerelease == false) | select(any(.assets[]?; .name == $a))][0].tag_name // empty')"
+          test -n "$tag"
+          echo "imagebuilder_tag=$tag" >> "$GITHUB_OUTPUT"
+          gh release download "$tag" --pattern "$ASSET" --pattern 'SHA256SUMS' --dir . --clobber
+          grep -F "  $ASSET" SHA256SUMS | sha256sum -c -
+          echo "Using ImageBuilder release: $tag"
+      - name: Build and validate configurable full SD image
+        run: |
+          set -euo pipefail
+          ./build.sh
+          (cd output && sha256sum -c SHA256SUMS)
+          df -h /
+      - name: Publish firmware to GitHub Release
+        env:
+          BUILDER_TAG: ${{ steps.upstream.outputs.imagebuilder_tag }}
+        run: |
+          set -euo pipefail
+          tag="firmware-$GITHUB_RUN_ID"
+          gh release create "$tag" output/*.img.gz output/SHA256SUMS output/king3288.manifest \
+            --target "$GITHUB_SHA" \
+            --title "KING3288 custom firmware (rootfs $ROOTFS_GIB GiB, Docker $WITH_DOCKER)" \
+            --notes "Standalone ImageBuilder source release: $BUILDER_TAG. Root partition: $ROOTFS_GIB GiB. Docker: $WITH_DOCKER. Package selection: packages.conf at commit $GITHUB_SHA. Offline SD image validation passed; new firmware requires real-board cold boot testing. **Do not flash to eMMC.**" \
+            --latest=false
