@@ -1,0 +1,40 @@
+<%+header%>
+<div class="cbi-map">
+    <h2> KING3288 ARMv7 软件 </h2>
+    <div class="cbi-map-descr">
+        iStoreOS 24.10.8 / Rockchip RK3288 / ARMv7。此页只列已核对的兼容软件，
+        使用已配置的可信 OPKG 软件源自动安装依赖；不是官方 ARM64 应用商店。
+        不提供系统升级、内核替换或 eMMC 写入操作。
+    </div>
+    <% if report and #report > 0 then %>
+        <fieldset class="cbi-section">
+            <legend>上次安装结果</legend>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto"><%=pcdata(report)%></pre>
+        </fieldset>
+    <% end %>
+    <fieldset class="cbi-section">
+        <legend>可选择的应用</legend>
+        <div class="table cbi-section-table">
+            <% for _, app in ipairs(apps) do %>
+                <div class="tr cbi-section-table-row">
+                    <div class="td" style="min-width:175px"><strong><%=pcdata(app.title)%></strong><br/><code><%=pcdata(app.name)%></code></div>
+                    <div class="td"><%=pcdata(app.desc)%></div>
+                    <div class="td" style="min-width:95px">
+                        <% if app.installed then %>
+                            <strong>已安装</strong>
+                        <% else %>
+                            <form action="<%=url('admin','store','king3288-install')%>" method="post">
+                                <input type="hidden" name="token" value="<%=token%>" />
+                                <input type="hidden" name="package" value="<%=pcdata(app.name)%>" />
+                                <button type="submit" class="cbi-button cbi-button-action"
+                                    onclick="this.disabled=true;this.form.submit();">安装</button>
+                            </form>
+                        <% end %>
+                    </div>
+                </div>
+            <% end %>
+        </div>
+    </fieldset>
+    <p>其他未列出的 ARMv7 软件包可在「系统 → 软件包」中安装。不要执行整机 <code>opkg upgrade</code>。</p>
+</div>
+<%+footer%>
