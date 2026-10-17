@@ -22,7 +22,7 @@ test "$(stat -c %s "$RAW")" = "$TOTAL_BYTES"
 gzip -t "$GZ"
 test "$(sfdisk -d "$RAW" | sed -n 's/^label-id: //p')" = 0x4b328826
 sfdisk -d "$RAW" | grep -E '^.+img1 : start= +32768, size= +2097152, type=c$' >/dev/null
-sfdisk -d "$RAW" | grep -E '^.+img2 : start= +2129920, size= +${P2_SECTORS}, type=83$' >/dev/null
+sfdisk -d "$RAW" | grep -E "^.+img2 : start= +2129920, size= +${P2_SECTORS}, type=83$" >/dev/null
 test "$(dd if="$RAW" bs=512 skip=64 count=206 status=none | sha256sum | cut -d' ' -f1)" = 84c08dd990738c1e935f86206a062aa75effc1148039328b5aa1722db818f8e3
 echo M8_PARTITION_AND_IDB_OK
 mcopy -o -i "$RAW@@$FAT_OFFSET" ::/zImage "$WORK/v3-verify/zImage"
