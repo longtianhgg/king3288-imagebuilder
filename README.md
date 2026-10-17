@@ -14,7 +14,7 @@
 | Target | `rockchip/armv7` |
 | Profile | `king3288` |
 | 用户空间 | ARMv7 little-endian / musl / OPKG |
-| 软件包 | 296 个，固定 manifest |
+| 软件包 | 核心包选择清单 + 自动解析依赖；296 包为历史参考 |
 | ImageBuilder | Standalone x86_64 Linux（约 176MiB） |
 | GMAC | RGMII, TX PBL=1, TX/RX checksum=on |
 | 下载包 | `istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst` |
@@ -24,7 +24,7 @@
 
 LuCI / iStore / QuickStart / Argon、OpenClash + Mihomo 1.19.31、Tailscale、Docker、Docker Compose、Dockerman、ttyd、eMMC 自动禁挂载及 SD ext4 安全扩容脚本等；**并非所有应用都已做实机功能测试**。
 
-原生 ImageBuilder 默认 profile 的软件包少于已验收的 M8 rootfs，必须使用仓库提供的 `./build.sh` 及 296 包清单才能保证一致；脚本排除默认 `dnsmasq`，保留 `dnsmasq-full`。
+原生 ImageBuilder 默认 profile 的软件包少于历史 M8 rootfs。当前 `packages.conf` 只列主动选择的功能包；依赖由 ImageBuilder 自动解析，最终安装清单见每次 Release 的 `king3288.manifest`。原始 296 包列表保留在 `board/king3288-configs/` 作历史参考。脚本排除默认 `dnsmasq`，保留 `dnsmasq-full`。
 
 ## GitHub Actions 自定义固件构建
 
@@ -78,8 +78,8 @@ chmod +x build.sh
 依次完成：
 
 1. 解压 Standalone ImageBuilder，不编译内核。
-2. 以 296 包清单执行 `make image PROFILE=king3288 PACKAGES=...`。
-3. 校对新生成的 manifest 与固定 296 包逐项一致。
+2. 以精简的 `packages.conf` 执行 `make image PROFILE=king3288 PACKAGES=...`。
+3. 验证主动选择的软件包存在，以及显式禁用的软件包没有被依赖重新引入。
 4. 利用 ImageBuilder 内置的 zImage/DTB、仓库的已验证 IDB，制作 MBR + extlinux + FAT32 p1 + ext4 p2 完整 SD 镜像。
 5. 校验分区布局、IDB、读回 zImage/DTB、整段 ext4 和扩容/eMMC 保护脚本。
 
