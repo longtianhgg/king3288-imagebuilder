@@ -20,8 +20,8 @@ if [[ ! -d "$NAME" ]]; then
   tar --use-compress-program=zstd -xf "$ARCHIVE"
 fi
 test -s "$NAME/Makefile"
-ROOTFS_GIB="$"+"{ROOTFS_GIB:-2}"
-WITH_DOCKER="$"+"{WITH_DOCKER:-true}"
+ROOTFS_GIB="${ROOTFS_GIB:-2}"
+WITH_DOCKER="${WITH_DOCKER:-true}"
 [[ "$ROOTFS_GIB" =~ ^[0-9]+$ ]] && (( ROOTFS_GIB >= 1 && ROOTFS_GIB <= 6 )) || { echo "ROOTFS_GIB must be 1..6" >&2; exit 2; }
 [[ "$WITH_DOCKER" == true || "$WITH_DOCKER" == false ]] || exit 2
 test -s "$HERE/packages.conf"
