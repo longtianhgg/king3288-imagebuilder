@@ -6,6 +6,15 @@
   <fieldset class="cbi-section">
     <legend>上次安装结果</legend>
     <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto"><%=pcdata(report)%></pre>
+    <% if preview_name then %>
+      <form action="<%=url('admin','store','king3288-install')%>" method="post">
+        <input type="hidden" name="token" value="<%=token%>"/>
+        <input type="hidden" name="package" value="<%=pcdata(preview_name)%>"/>
+        <input type="hidden" name="stage" value="confirm"/>
+        <button type="submit" class="cbi-button cbi-button-positive" onclick="this.disabled=true;this.form.submit();">确认安装 <%=pcdata(preview_name)%></button>
+        <span>确认前请核对上方将安装的软件包及依赖，预检查 10 分钟后失效。</span>
+      </form>
+    <% end %>
   </fieldset>
   <% end %>
   <fieldset class="cbi-section">
@@ -38,7 +47,8 @@
           <form action="<%=url('admin','store','king3288-install')%>" method="post">
             <input type="hidden" name="token" value="<%=token%>"/>
             <input type="hidden" name="package" value="<%=pcdata(app.name)%>"/>
-            <button type="submit" class="cbi-button cbi-button-action" onclick="this.disabled=true;this.form.submit();">安装</button>
+            <input type="hidden" name="stage" value="preview"/>
+            <button type="submit" class="cbi-button cbi-button-action" onclick="this.disabled=true;this.form.submit();">检查依赖</button>
           </form>
         <% end %>
         </div>
