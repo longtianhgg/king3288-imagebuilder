@@ -28,9 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           asset=istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst
-          source_tag="$(gh api 'repos/longtianhgg/king3288-imagebuilder/releases?per_page=60' |
-            jq -r --arg a "$asset" '[.[] | select(.draft == false and .prerelease == false) |
-              select(any(.assets[]?; .name == $a))][0].tag_name // empty')"
+          # Pin to the known-good M8 source matching the currently verified SD rootfs.
+          # Do not silently follow a newer ImageBuilder with different package ABI.
+          source_tag="v2026.10.16-m8"
           test -n "$source_tag"
           printf 'source_tag=%s\n' "$source_tag" >> "$GITHUB_OUTPUT"
           gh release download "$source_tag" --pattern "$asset" --pattern SHA256SUMS --dir . --clobber
