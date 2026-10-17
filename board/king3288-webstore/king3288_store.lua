@@ -6,6 +6,7 @@ local FEEDS = { "king3288_m8", "openwrt_base" }
 local PAGE_SIZE = 30
 local ARCH = "arm_cortex-a15_neon-vfpv4"
 local REPORT = "/tmp/king3288-store-install.log"
+local PREVIEW = "/tmp/king3288-store-preview"
 
 local PROTECTED = {
     ["base-files"]=true, ["busybox"]=true, ["dnsmasq"]=true,
@@ -111,6 +112,36 @@ local function package_catalog()
     return catalog
 end
 
+local function pending_preview()
+    local fd = io.open(PREVIEW, "r")
+    if not fd then return nil end
+    local name, timestamp = fd:read("*l"), tonumber(fd:read("*l"))
+    fd:close()
+    if not valid_name(name) or not timestamp then return nil end
+    local elapsed = os.time() - timestamp
+    if elapsed < 0 or elapsed > 600 then return nil end
+    return name
+end
+
+local function preview_risk(output)
+    -- Never allow the web UI to upgrade, replace or remove existing packages,
+    -- or to pull a new kernel module / protected base package as a dependency.
+    for line in (output or ""):gmatch("[^\r\n]+") do
+        local action, dep = line:match("^(Installing) ([%w_.+%-]+)")
+        if not action then action, dep = line:match("^(Upgrading) ([%w_.+%-]+)") end
+        if not action then action, dep = line:match("^(Removing) ([%w_.+%-]+)") end
+        if action == "Upgrading" or action == "Removing" then
+            return "需要升级或卸载已存在的软件：" .. dep
+        end
+        if action == "Installing" and (PROTECTED[dep]
+            or dep:match("^kmod%-") or dep:match("^uboot")
+            or dep:match("^u%-boot")) then
+            return "依赖包含受保护的软件：" .. dep
+        end
+    end
+    return nil
+end
+
 function index()
     entry({"admin", "store", "king3288"}, call("show_store"), _("KING3288 ARMv7 软件"), 5)
     entry({"admin", "store", "king3288-install"}, post("install_package")).leaf = true
@@ -155,7 +186,8 @@ function show_store()
     require("luci.template").render("king3288/store", {
         apps = selected, categories = CATEGORIES, query = query,
         category = category, page = page, pages = pages,
-        matched = #found, total = count, report = fs.readfile(REPORT) or ""
+        matched = #found, total = count, report = fs.readfile(REPORT) or "",
+        preview_name = pending_preview()
     })
 end
 
@@ -166,20 +198,53 @@ function install_package()
     local sys = require "luci.sys"
     local util = require "luci.util"
     local name = http.formvalue("package")
+    local stage = http.formvalue("stage")
 
-    -- Re-check live trusted feed membership on every POST, not only on GET.
     local catalog = package_catalog()
     if not valid_name(name) or not catalog[name] or not catalog[name].can_install then
         http.status(400, "Package not available for safe installation")
         return
     end
-    if installed_set()[name] then
-        fs.writefile(REPORT, name .. " 已安装，不执行升级。\n")
-    else
-        local cmd = "opkg install " .. util.shellquote(name)
-            .. " 2>&1; echo KING3288_INSTALL_RC=$?"
-        local result = sys.exec(cmd) or ""
-        fs.writefile(REPORT, result:sub(1, 16000))
+
+    local function redirect()
+        http.redirect(dispatcher.build_url("admin", "store", "king3288"))
     end
-    http.redirect(dispatcher.build_url("admin", "store", "king3288"))
+
+    if installed_set()[name] then
+        fs.unlink(PREVIEW)
+        fs.writefile(REPORT, name .. " 已安装，不执行升级。\n")
+        redirect()
+        return
+    end
+
+    if stage == "confirm" then
+        if pending_preview() ~= name then
+            fs.writefile(REPORT, "预检查不存在或已过期。请重新执行安装前检查。\n")
+            redirect()
+            return
+        end
+        fs.unlink(PREVIEW)
+        local result = sys.exec("opkg install " .. util.shellquote(name)
+            .. " 2>&1; echo KING3288_INSTALL_RC=$?") or ""
+        local rc = tonumber(result:match("KING3288_INSTALL_RC=(%d+)"))
+        local status = rc == 0 and "安装命令成功执行。" or "安装失败，请查看下方错误日志。"
+        fs.writefile(REPORT, status .. "\n" .. result:sub(1, 16000))
+    else
+        fs.unlink(PREVIEW)
+        local result = sys.exec("opkg --noaction install "
+            .. util.shellquote(name) .. " 2>&1; echo KING3288_PREVIEW_RC=$?") or ""
+        local rc = tonumber(result:match("KING3288_PREVIEW_RC=(%d+)"))
+        local risk = preview_risk(result)
+        if rc == 0 and not risk then
+            fs.writefile(PREVIEW, name .. "\n" .. os.time() .. "\n")
+            fs.writefile(REPORT, "预检查成功：以下是 OPKG 计划安装的软件及依赖，并未实际安装。\n"
+                .. "确认后请点击下方【确认安装】，10 分钟内有效。\n\n"
+                .. result:sub(1, 15000))
+        else
+            local reason = risk or ("OPKG 预检查失败，返回码：" .. tostring(rc))
+            fs.writefile(REPORT, "安装已取消：" .. reason .. "\n\n"
+                .. result:sub(1, 15000))
+        end
+    end
+    redirect()
 end
