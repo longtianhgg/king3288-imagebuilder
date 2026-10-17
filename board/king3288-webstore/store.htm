@@ -1,40 +1,57 @@
 <%+header%>
 <div class="cbi-map">
-    <h2> KING3288 ARMv7 软件 </h2>
-    <div class="cbi-map-descr">
-        iStoreOS 24.10.8 / Rockchip RK3288 / ARMv7。此页只列已核对的兼容软件，
-        使用已配置的可信 OPKG 软件源自动安装依赖；不是官方 ARM64 应用商店。
-        不提供系统升级、内核替换或 eMMC 写入操作。
-    </div>
-    <% if report and #report > 0 then %>
-        <fieldset class="cbi-section">
-            <legend>上次安装结果</legend>
-            <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:250px;overflow:auto"><%=pcdata(report)%></pre>
-        </fieldset>
-    <% end %>
-    <fieldset class="cbi-section">
-        <legend>可选择的应用</legend>
-        <div class="table cbi-section-table">
-            <% for _, app in ipairs(apps) do %>
-                <div class="tr cbi-section-table-row">
-                    <div class="td" style="min-width:175px"><strong><%=pcdata(app.title)%></strong><br/><code><%=pcdata(app.name)%></code></div>
-                    <div class="td"><%=pcdata(app.desc)%></div>
-                    <div class="td" style="min-width:95px">
-                        <% if app.installed then %>
-                            <strong>已安装</strong>
-                        <% else %>
-                            <form action="<%=url('admin','store','king3288-install')%>" method="post">
-                                <input type="hidden" name="token" value="<%=token%>" />
-                                <input type="hidden" name="package" value="<%=pcdata(app.name)%>" />
-                                <button type="submit" class="cbi-button cbi-button-action"
-                                    onclick="this.disabled=true;this.form.submit();">安装</button>
-                            </form>
-                        <% end %>
-                    </div>
-                </div>
-            <% end %>
+  <h2>KING3288 ARMv7 软件</h2>
+  <div class="cbi-map-descr">从已经配置且通过签名验证的 OPKG 软件源自动读取包列表。仅对普通应用提供安装按钮；内核模块、驱动、基础系统组件及部分库不允许从此页面安装。不会执行整机升级。</div>
+  <% if report and #report > 0 then %>
+  <fieldset class="cbi-section">
+    <legend>上次安装结果</legend>
+    <pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto"><%=pcdata(report)%></pre>
+  </fieldset>
+  <% end %>
+  <fieldset class="cbi-section">
+    <legend>搜索与分类</legend>
+    <form method="get" action="<%=url('admin','store','king3288')%>">
+      <label>关键词 <input type="search" name="q" value="<%=pcdata(query)%>" placeholder="软件名或说明" style="max-width:240px"/></label>
+      <label>分类 <select name="category">
+      <% for _, cat in ipairs(categories) do %>
+        <option value="<%=pcdata(cat.id)%>" <% if category == cat.id then %>selected="selected"<% end %>><%=pcdata(cat.title)%></option>
+      <% end %>
+      </select></label>
+      <button type="submit" class="cbi-button cbi-button-action">查询</button>
+      <a href="<%=url('admin','store','king3288')%>">重置</a>
+    </form>
+    <p>索引内总计 <strong><%=total%></strong> 个包，匹配 <strong><%=matched%></strong> 个；第 <%=page%> / <%=pages%> 页。</p>
+  </fieldset>
+  <fieldset class="cbi-section">
+    <legend>软件目录</legend>
+    <div class="table cbi-section-table">
+      <% for _, app in ipairs(apps) do %>
+      <div class="tr cbi-section-table-row">
+        <div class="td" style="min-width:170px"><strong><%=pcdata(app.name)%></strong><br/><small><%=pcdata(app.version)%></small></div>
+        <div class="td"><%=pcdata(app.desc)%><br/><small>分类：<%=pcdata(app.category)%> · 来源：<%=pcdata(app.source)%></small></div>
+        <div class="td" style="min-width:95px">
+        <% if app.installed then %>
+          <strong>已安装</strong>
+        <% elseif not app.can_install then %>
+          <span title="为保护当前运行系统，这类组件不在商店直接安装">受保护</span>
+        <% else %>
+          <form action="<%=url('admin','store','king3288-install')%>" method="post">
+            <input type="hidden" name="token" value="<%=token%>"/>
+            <input type="hidden" name="package" value="<%=pcdata(app.name)%>"/>
+            <button type="submit" class="cbi-button cbi-button-action" onclick="this.disabled=true;this.form.submit();">安装</button>
+          </form>
+        <% end %>
         </div>
-    </fieldset>
-    <p>其他未列出的 ARMv7 软件包可在「系统 → 软件包」中安装。不要执行整机 <code>opkg upgrade</code>。</p>
+      </div>
+      <% end %>
+      <% if #apps == 0 then %><p>没有匹配的软件包。请修改筛选条件。</p><% end %>
+    </div>
+    <% if page > 1 then %>
+      <a class="cbi-button" href="<%=url('admin','store','king3288')%>?q=<%=luci.http.urlencode(query)%>&amp;category=<%=luci.http.urlencode(category)%>&amp;page=<%=page-1%>">上一页</a>
+    <% end %>
+    <% if page < pages then %>
+      <a class="cbi-button" href="<%=url('admin','store','king3288')%>?q=<%=luci.http.urlencode(query)%>&amp;category=<%=luci.http.urlencode(category)%>&amp;page=<%=page+1%>">下一页</a>
+    <% end %>
+  </fieldset>
 </div>
 <%+footer%>
